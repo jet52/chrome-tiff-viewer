@@ -20,14 +20,29 @@ async function createInlinedWorkerBlob() {
   console.log('[OCR Offscreen] Creating inlined blob...');
 
   const blobCode = `
+// Debug: wrap postMessage to log outgoing messages
+const _originalPostMessage = self.postMessage.bind(self);
+self.postMessage = function(msg, transfer) {
+  console.log('[BlobWorker] postMessage:', JSON.stringify(msg).substring(0, 150));
+  return _originalPostMessage(msg, transfer);
+};
+
 // Mock importScripts - core is inlined
-self.importScripts = function() {};
+self.importScripts = function() {
+  console.log('[BlobWorker] importScripts called (no-op)');
+};
+
+console.log('[BlobWorker] Starting...');
 
 // Inlined Tesseract Core
 ${coreCode}
 
+console.log('[BlobWorker] Core loaded');
+
 // Inlined Tesseract Worker
 ${workerCode}
+
+console.log('[BlobWorker] Worker code loaded');
 `;
 
   const blob = new Blob([blobCode], { type: 'application/javascript' });
@@ -87,7 +102,7 @@ async function initWorker() {
 }
 
 /**
- * Recognize text
+ * Recognize text with timeout
  */
 async function recognize(imageData) {
   if (!tesseractWorker || !workerReady) {
@@ -95,40 +110,73 @@ async function recognize(imageData) {
   }
 
   console.log('[OCR Offscreen] Starting recognition...');
-  const result = await tesseractWorker.recognize(imageData);
-  console.log('[OCR Offscreen] Recognition complete');
-  return result.data;
+
+  // Add timeout wrapper
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Recognition timed out after 3 minutes')), 180000);
+  });
+
+  try {
+    const result = await Promise.race([
+      tesseractWorker.recognize(imageData),
+      timeoutPromise
+    ]);
+    console.log('[OCR Offscreen] Recognition complete, result:', result ? 'received' : 'null');
+    console.log('[OCR Offscreen] Result keys:', result ? Object.keys(result) : 'N/A');
+
+    // Extract only serializable data (the full result object has non-serializable parts)
+    const data = result.data;
+    return {
+      text: data.text,
+      confidence: data.confidence,
+      // Include basic word data if needed for highlighting, but simplified
+      words: data.words ? data.words.map(w => ({
+        text: w.text,
+        confidence: w.confidence,
+        bbox: w.bbox ? { x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 } : null
+      })) : []
+    };
+  } catch (err) {
+    console.error('[OCR Offscreen] Recognition error:', err);
+    throw err;
+  }
 }
 
 // Listen for messages from service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[OCR Offscreen] Received:', message.type);
+  const { type, requestId } = message;
+  console.log('[OCR Offscreen] Received:', type, 'requestId:', requestId);
 
-  if (message.type === 'ocr-init') {
+  // Helper to send response back to background
+  function respond(response) {
+    chrome.runtime.sendMessage({
+      type: 'ocr-response',
+      requestId,
+      ...response
+    });
+  }
+
+  if (type === 'ocr-init') {
     initWorker()
-      .then(() => sendResponse({ success: true }))
-      .catch(err => {
-        sendResponse({ success: false, error: err.message || String(err) });
-      });
-    return true;
+      .then(() => respond({ success: true }))
+      .catch(err => respond({ success: false, error: err.message || String(err) }));
+    return false;
   }
 
-  if (message.type === 'ocr-recognize') {
+  if (type === 'ocr-recognize') {
     recognize(message.imageData)
-      .then(data => sendResponse({ success: true, data }))
-      .catch(err => {
-        sendResponse({ success: false, error: err.message || String(err) });
-      });
-    return true;
+      .then(data => respond({ success: true, data }))
+      .catch(err => respond({ success: false, error: err.message || String(err) }));
+    return false;
   }
 
-  if (message.type === 'ocr-terminate') {
+  if (type === 'ocr-terminate') {
     if (tesseractWorker) {
       tesseractWorker.terminate();
       tesseractWorker = null;
       workerReady = false;
     }
-    sendResponse({ success: true });
+    respond({ success: true });
     return false;
   }
 });

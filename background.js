@@ -211,9 +211,10 @@ chrome.runtime.onInstalled.addListener(async () => {
 // ==================== OCR via Offscreen Document ====================
 
 let creatingOffscreen = null;
+let ocrRequestId = 0;
+const pendingOcrRequests = new Map();
 
 async function setupOffscreen() {
-  // Check if offscreen document already exists
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
     documentUrls: [chrome.runtime.getURL('offscreen/offscreen.html')]
@@ -223,7 +224,6 @@ async function setupOffscreen() {
     return;
   }
 
-  // Create offscreen document if not already creating
   if (creatingOffscreen) {
     await creatingOffscreen;
   } else {
@@ -237,26 +237,51 @@ async function setupOffscreen() {
   }
 }
 
-// Handle messages from viewer for OCR operations
+// Handle messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle OCR requests from viewer
   if (message.type === 'ocr-init' || message.type === 'ocr-recognize' || message.type === 'ocr-terminate') {
-    // Forward to offscreen document
+    const requestId = ++ocrRequestId;
+
+    // Store the response callback
+    pendingOcrRequests.set(requestId, sendResponse);
+
+    // Forward to offscreen with request ID
     (async () => {
       try {
         await setupOffscreen();
-        const response = await chrome.runtime.sendMessage(message);
-        sendResponse(response);
+        // Send message with request ID - offscreen will respond with ocr-response
+        chrome.runtime.sendMessage({
+          ...message,
+          requestId
+        });
       } catch (err) {
-        console.error('[TIFF Viewer] OCR error:', err);
-        sendResponse({ success: false, error: err.message || String(err) });
+        console.error('[TIFF Viewer] OCR setup error:', err);
+        const callback = pendingOcrRequests.get(requestId);
+        if (callback) {
+          callback({ success: false, error: err.message || String(err) });
+          pendingOcrRequests.delete(requestId);
+        }
       }
     })();
-    return true; // Keep channel open for async response
+
+    return true; // Keep channel open
   }
 
-  // Forward progress messages to the viewer tab
+  // Handle OCR responses from offscreen
+  if (message.type === 'ocr-response' && sender.url?.includes('offscreen')) {
+    const { requestId, ...response } = message;
+    const callback = pendingOcrRequests.get(requestId);
+    if (callback) {
+      console.log('[TIFF Viewer] OCR response received for request:', requestId);
+      callback(response);
+      pendingOcrRequests.delete(requestId);
+    }
+    return false;
+  }
+
+  // Forward progress messages to viewer tabs
   if (message.type === 'ocr-progress' && sender.url?.includes('offscreen')) {
-    // Broadcast to all tabs showing viewer
     chrome.tabs.query({}, (tabs) => {
       for (const tab of tabs) {
         if (tab.url?.includes('viewer/viewer.html')) {
