@@ -29,45 +29,32 @@ The extension is generally well-designed for its purpose but has several areas o
 
 ---
 
-### 2. Console Logging of Sensitive Content (MEDIUM)
+### 2. ~~Console Logging of Sensitive Content~~ (FIXED in v1.0.31)
 
-**Locations**:
-- `viewer.js:1002-1003` - Logs first 100 chars of OCR text
-- `offscreen.js:65` - Logs worker messages
-- `offscreen.js:135` - Logs OCR progress
-- Multiple debug `console.log` statements throughout
+**Status**: FIXED - All logging now controlled by DEBUG flag (default: false).
 
-**Risk**: Sensitive document text appears in browser console logs. Other extensions or malicious scripts with console access could capture this. Browser extensions can read console output in some scenarios.
+Changes made:
+- Added `DEBUG = false` flag to all source files
+- All `console.log/error` calls replaced with `log/logError` wrappers
+- OCR text preview removed from logs entirely
+- Blob worker debug logging removed
 
-**Mitigation**:
-- Remove or gate debug logging behind a flag
-- Never log document content, even partial previews
-- Use a production build that strips console statements
+To enable logging for development, set `DEBUG = true` in the source file.
 
 ---
 
-### 3. No URL Validation (MEDIUM)
+### 3. ~~No URL Validation~~ (FIXED in v1.0.32)
 
-**Location**: `viewer.js:327-332`
-```javascript
-async loadFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const url = params.get('url');
-  if (url) {
-    await this.loadUrl(url);
-  }
-}
-```
+**Location**: `viewer.js:332-359`
 
-**Risk**: The viewer accepts any URL from query parameters without validation. Could be used to:
-- Probe internal network resources (SSRF-like)
-- Load from `file://` URLs if browser allows
-- Load from `javascript:` or `data:` URLs (though fetch would fail)
+**Status**: FIXED - URL scheme validation now implemented.
 
-**Mitigation**:
-- Validate URL scheme is `http:` or `https:` (or `file:` if intended)
-- Consider a URL allowlist for sensitive deployments
-- Validate URL format before fetching
+The viewer now validates URL schemes before fetching, allowing only:
+- `http:`
+- `https:`
+- `file:`
+
+Invalid URLs display an error message instead of attempting to fetch.
 
 ---
 
@@ -207,10 +194,10 @@ printDoc.write(html);
 
 ## Recommendations Summary
 
-| Priority | Issue | Action |
+| Priority | Issue | Status |
 |----------|-------|--------|
-| HIGH | Console logging | Remove document content from logs |
-| MEDIUM | URL validation | Validate scheme before fetch |
+| ~~HIGH~~ | ~~Console logging~~ | FIXED (v1.0.31) |
+| ~~MEDIUM~~ | ~~URL validation~~ | FIXED (v1.0.32) |
 | MEDIUM | Host permissions | Consider narrowing scope |
 | LOW | OCR broadcast | Send progress to originating tab only |
 | LOW | Message validation | Use exact URL matching |
@@ -222,8 +209,8 @@ printDoc.write(html);
 
 If deploying for highly sensitive documents:
 
-1. Build a production version with all console.log statements removed
-2. Add URL scheme validation (https only for network, file for local)
+1. ~~Build a production version with all console.log statements removed~~ (DONE - DEBUG=false)
+2. ~~Add URL scheme validation (https only for network, file for local)~~ (DONE - v1.0.32)
 3. Add a "Close & Clear" button that nullifies all document data
 4. Consider disabling OCR feature if text extraction is a concern
 5. Deploy with restricted `host_permissions` if possible

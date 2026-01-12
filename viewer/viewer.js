@@ -329,11 +329,28 @@ class TiffViewer {
     }
   }
 
+  /**
+   * Load TIFF from URL parameter with security validation
+   * Only allows http:, https:, and file: protocols to prevent SSRF-like attacks
+   */
   async loadFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const url = params.get('url');
 
     if (url) {
+      // Validate URL scheme to prevent SSRF and protocol confusion attacks
+      try {
+        const parsed = new URL(url);
+        const allowedSchemes = ['http:', 'https:', 'file:'];
+        if (!allowedSchemes.includes(parsed.protocol)) {
+          this.showError('Invalid URL', `Unsupported URL scheme: ${parsed.protocol}. Only HTTP, HTTPS, and file URLs are allowed.`);
+          return;
+        }
+      } catch (e) {
+        this.showError('Invalid URL', 'The provided URL is not valid.');
+        return;
+      }
+
       await this.loadUrl(url);
     } else {
       // Show drop zone for file selection
