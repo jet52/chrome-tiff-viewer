@@ -1,20 +1,69 @@
-// TIFF Viewer - Main viewer logic
+/**
+ * TIFF Viewer - Main Viewer Logic
+ *
+ * This is the core viewer component that handles:
+ * - Loading and decoding TIFF files (via UTIF.js)
+ * - Rendering pages to canvas elements
+ * - User interactions (zoom, rotation, navigation, view modes)
+ * - OCR processing workflow (via background.js -> offscreen.js)
+ * - Text overlay rendering for OCR results
+ *
+ * The viewer is designed for multi-page TIFF documents (10-100 pages)
+ * and supports both continuous scroll and single-page view modes.
+ *
+ * @requires UTIF.js - For TIFF decoding
+ * @requires Chrome Extension APIs - For OCR messaging
+ */
 
 class TiffViewer {
   constructor() {
-    // State
-    this.pages = [];           // Array of page data { ifd, canvas, rotation, ocrData, textOverlay }
-    this.currentPage = 0;      // Current page index (0-based)
-    this.zoom = 'fit-width';   // Current zoom level (default to fit width)
-    this.viewMode = 'continuous'; // 'continuous' or 'single'
-    this.buffer = null;        // Raw TIFF data
+    // ==================== State Properties ====================
 
-    // OCR state
-    this.ocrWorker = null;     // Tesseract worker instance
+    /**
+     * Array of page objects, each containing:
+     * - ifd: TIFF Image File Directory data from UTIF.js
+     * - canvas: HTMLCanvasElement with rendered page
+     * - width/height: Original image dimensions
+     * - rotation: Current rotation in degrees (0, 90, 180, 270)
+     * - element: DOM wrapper element for the page
+     * - ocrData: OCR results (text, words with bounding boxes)
+     * - textOverlay: DOM element for selectable OCR text
+     * - computedScale: Current zoom scale factor
+     */
+    this.pages = [];
+
+    /** Current page index (0-based) */
+    this.currentPage = 0;
+
+    /** Current zoom level - can be 'fit-width', 'fit-page', or a number (e.g., 1.5 for 150%) */
+    this.zoom = 'fit-width';
+
+    /** View mode - 'continuous' (scroll) or 'single' (one page at a time) */
+    this.viewMode = 'continuous';
+
+    /** Raw TIFF file data as Uint8Array, kept for save functionality */
+    this.buffer = null;
+
+    /** Original filename when loaded from local file */
+    this.currentFileName = null;
+
+    // ==================== OCR State ====================
+
+    /** Whether OCR engine has been initialized */
+    this.ocrInitialized = false;
+
+    /** Whether OCR is currently in progress */
     this.ocrInProgress = false;
+
+    /** Flag to cancel ongoing OCR operation */
     this.ocrCancelled = false;
 
-    // Zoom levels
+    /** Listener for OCR progress messages from background */
+    this.ocrProgressListener = null;
+
+    // ==================== Configuration ====================
+
+    /** Available numeric zoom levels for zoom in/out stepping */
     this.zoomLevels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
     // Cache DOM elements
@@ -455,7 +504,9 @@ class TiffViewer {
     }
   }
 
-  // Navigation
+  // ==================== Navigation Methods ====================
+
+  /** Navigate to the previous page */
   prevPage() {
     if (this.currentPage > 0) {
       this.goToPage(this.currentPage - 1);
@@ -495,7 +546,9 @@ class TiffViewer {
     document.getElementById('btn-next').disabled = this.currentPage >= this.pages.length - 1;
   }
 
-  // Zoom
+  // ==================== Zoom Methods ====================
+
+  /** Step zoom in to the next preset level */
   zoomIn() {
     const currentIndex = this.zoomLevels.indexOf(this.zoom);
     if (currentIndex < this.zoomLevels.length - 1) {
@@ -592,7 +645,12 @@ class TiffViewer {
     }
   }
 
-  // Rotation
+  // ==================== Rotation Methods ====================
+
+  /**
+   * Rotate the current page by the specified degrees
+   * @param {number} degrees - Rotation amount (typically 90 or -90)
+   */
   rotate(degrees) {
     if (this.pages.length === 0) return;
 
@@ -602,7 +660,9 @@ class TiffViewer {
     this.applyZoom();
   }
 
-  // View Mode
+  // ==================== View Mode Methods ====================
+
+  /** Toggle between continuous scroll and single-page view */
   toggleViewMode() {
     this.viewMode = this.viewMode === 'continuous' ? 'single' : 'continuous';
     this.updateViewMode();
@@ -628,7 +688,12 @@ class TiffViewer {
     }
   }
 
-  // Print
+  // ==================== Print & Save Methods ====================
+
+  /**
+   * Print all pages using a hidden iframe
+   * Creates a print-optimized HTML document with page breaks
+   */
   print() {
     if (this.pages.length === 0) return;
 
@@ -731,10 +796,20 @@ class TiffViewer {
     console.log(`[Save] Downloaded: ${filename}`);
   }
 
-  // ==================== OCR Functions ====================
+  // ==================== OCR Methods ====================
+  //
+  // OCR Flow:
+  // 1. Viewer calls initOcr() -> sends 'ocr-init' to background.js
+  // 2. Background creates offscreen document and forwards message
+  // 3. Offscreen initializes Tesseract.js worker (with inlined blob)
+  // 4. Viewer calls ocrPage() -> sends 'ocr-recognize' with canvas data URL
+  // 5. Offscreen processes image and returns { text, confidence, words[] }
+  // 6. Viewer creates text overlay with positioned word spans
+  //
 
   /**
-   * Initialize OCR via offscreen document
+   * Initialize OCR engine via offscreen document
+   * This is called automatically before the first OCR operation
    */
   async initOcr() {
     if (this.ocrInitialized) {

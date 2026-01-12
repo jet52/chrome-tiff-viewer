@@ -1,13 +1,37 @@
-// TIFF Viewer - Background Service Worker
-// Intercepts TIFF files and redirects them to the viewer
+/**
+ * TIFF Viewer - Background Service Worker
+ *
+ * This service worker handles:
+ * 1. TIFF file interception - Redirects TIFF URLs to the viewer
+ * 2. Download interception - Catches TIFF downloads and opens in viewer
+ * 3. OCR message routing - Forwards OCR requests between viewer and offscreen document
+ *
+ * Interception Methods:
+ * - declarativeNetRequest: Creates dynamic redirect rules for TIFF URLs
+ * - downloads.onDeterminingFilename: Catches TIFF downloads
+ * - tabs.onUpdated/onCreated: Detects navigation to TIFF URLs
+ * - webNavigation.onBeforeNavigate: Early detection of TIFF navigation
+ */
 
+// ==================== Configuration ====================
+
+/** Regex to match TIFF file extensions in URLs */
 const TIFF_EXTENSIONS = /\.(tiff?|tif)(\?.*)?$/i;
+
+/** URL of the viewer page */
 const VIEWER_URL = chrome.runtime.getURL('viewer/viewer.html');
 
-// Rule ID counter for dynamic rules
+// ==================== Dynamic Rule Management ====================
+//
+// Chrome's declarativeNetRequest requires rules to be created before
+// navigation occurs. We create temporary rules when TIFF URLs are detected
+// and clean them up after 30 seconds.
+//
+
+/** Counter for generating unique rule IDs */
 let ruleIdCounter = 1;
 
-// Store for pending redirects (URL -> rule ID)
+/** Map of URL -> rule ID for active redirect rules */
 const pendingRules = new Map();
 
 /**
@@ -95,8 +119,13 @@ function openInViewer(url, tabId = null) {
   }
 }
 
-// === Method 1: Intercept downloads ===
-// When Chrome decides to download a TIFF, cancel it and open in viewer
+// ==================== Method 1: Download Interception ====================
+//
+// When Chrome decides to download a TIFF (instead of displaying it),
+// we cancel the download and open the URL in our viewer instead.
+// Note: blob: URLs are excluded since they're intentional saves from our viewer.
+//
+
 chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   const url = downloadItem.url;
   const filename = downloadItem.filename || '';
@@ -136,8 +165,12 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   suggest({ filename: downloadItem.filename });
 });
 
-// === Method 2: Pre-create redirect rules for .tif/.tiff navigation ===
-// Listen for navigation to TIFF URLs and create redirect rules
+// ==================== Method 2: Tab Navigation Interception ====================
+//
+// Listen for tab URL changes that involve TIFF files.
+// When detected, redirect the tab to our viewer.
+//
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url && isTiffUrl(changeInfo.url)) {
     // Skip if it's already our viewer
@@ -158,7 +191,12 @@ chrome.tabs.onCreated.addListener((tab) => {
   }
 });
 
-// === Method 3: Handle direct navigation via webNavigation ===
+// ==================== Method 3: Early Navigation Interception ====================
+//
+// Use webNavigation API for early detection of TIFF URL navigation.
+// Creates redirect rules before the request is fully processed.
+//
+
 chrome.webNavigation?.onBeforeNavigate?.addListener((details) => {
   // Only main frame
   if (details.frameId !== 0) return;
@@ -176,7 +214,13 @@ chrome.webNavigation?.onBeforeNavigate?.addListener((details) => {
   }
 });
 
-// Clean up old dynamic rules on startup
+// ==================== Rule Cleanup ====================
+//
+// Clean up any leftover redirect rules from previous sessions.
+// Rules are created dynamically and should be removed, but this
+// handles cases where cleanup didn't happen (e.g., browser crash).
+//
+
 chrome.runtime.onStartup.addListener(async () => {
   try {
     const rules = await chrome.declarativeNetRequest.getDynamicRules();
@@ -209,11 +253,34 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 // ==================== OCR via Offscreen Document ====================
+//
+// Chrome MV3 extensions cannot run Web Workers in the service worker.
+// We use an offscreen document to host the Tesseract.js worker.
+//
+// Message Flow:
+// 1. Viewer sends ocr-init/ocr-recognize/ocr-terminate to background
+// 2. Background ensures offscreen document exists
+// 3. Background forwards message to offscreen with a unique requestId
+// 4. Offscreen processes and sends ocr-response back with the requestId
+// 5. Background matches response to pending callback and resolves
+//
+// Note: We use request IDs because Chrome's sendResponse times out
+// before long OCR operations complete.
+//
 
+/** Promise tracking offscreen document creation to prevent duplicates */
 let creatingOffscreen = null;
+
+/** Counter for generating unique OCR request IDs */
 let ocrRequestId = 0;
+
+/** Map of requestId -> sendResponse callback for pending OCR requests */
 const pendingOcrRequests = new Map();
 
+/**
+ * Ensure the offscreen document exists for OCR processing
+ * Creates it if needed, waits if creation is already in progress
+ */
 async function setupOffscreen() {
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],

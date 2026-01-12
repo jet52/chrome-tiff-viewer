@@ -1,13 +1,52 @@
-// Offscreen document for OCR processing
-// Patches Worker constructor to use inlined blob, then uses Tesseract.js API
+/**
+ * Offscreen Document for OCR Processing
+ *
+ * This runs in an offscreen document context (not the service worker),
+ * which allows us to create Web Workers for Tesseract.js.
+ *
+ * Challenge: Chrome extension workers cannot use importScripts() to load
+ * external scripts. Tesseract.js normally creates a worker that loads
+ * additional scripts dynamically.
+ *
+ * Solution: We create an "inlined blob worker" that contains all the
+ * necessary Tesseract code bundled together:
+ * 1. Fetch tesseract-worker.min.js and tesseract-core-simd.wasm.js as text
+ * 2. Combine them into a single blob with a mocked importScripts
+ * 3. Patch the global Worker constructor to use our blob
+ * 4. Let Tesseract.js create its worker (which uses our patched constructor)
+ * 5. Restore the original Worker constructor
+ *
+ * Message Types:
+ * - ocr-init: Initialize the Tesseract worker
+ * - ocr-recognize: Process an image and return OCR results
+ * - ocr-terminate: Clean up the worker
+ * - ocr-response: Response sent back to background.js
+ */
 
+// ==================== State ====================
+
+/** The Tesseract.js worker instance */
 let tesseractWorker = null;
+
+/** Whether the worker has been initialized and is ready */
 let workerReady = false;
 
+/** Base URL for loading Tesseract files from the extension */
 const baseUrl = chrome.runtime.getURL('lib');
 
+// ==================== Blob Worker Creation ====================
+
 /**
- * Fetch and create inlined worker blob
+ * Create a blob URL containing all Tesseract worker code inlined
+ *
+ * This fetches the worker script and WASM loader as text, then combines
+ * them into a single blob. The blob includes:
+ * - A mocked importScripts (no-op since everything is inlined)
+ * - Debug wrappers for postMessage
+ * - The Tesseract core WASM loader
+ * - The Tesseract worker script
+ *
+ * @returns {Promise<string>} Blob URL that can be used with new Worker()
  */
 async function createInlinedWorkerBlob() {
   console.log('[OCR Offscreen] Fetching scripts for blob...');
@@ -49,8 +88,21 @@ console.log('[BlobWorker] Worker code loaded');
   return URL.createObjectURL(blob);
 }
 
+// ==================== Worker Initialization ====================
+
 /**
- * Initialize by patching Worker and using Tesseract API
+ * Initialize the Tesseract worker using Worker constructor patching
+ *
+ * The trick here is to temporarily replace the global Worker constructor
+ * so that when Tesseract.js tries to create its worker, it gets our
+ * pre-built blob worker instead of trying to load from a URL.
+ *
+ * Steps:
+ * 1. Create the inlined blob URL
+ * 2. Save the original Worker constructor
+ * 3. Replace Worker with a version that always uses our blob
+ * 4. Call Tesseract.createWorker() - it will use our patched Worker
+ * 5. Restore the original Worker constructor
  */
 async function initWorker() {
   if (tesseractWorker && workerReady) return;
@@ -142,7 +194,13 @@ async function recognize(imageData) {
   }
 }
 
-// Listen for messages from service worker
+// ==================== Message Handling ====================
+//
+// Messages come from background.js with a requestId.
+// We process the request and send back an ocr-response message
+// with the same requestId so background can match it to the callback.
+//
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const { type, requestId } = message;
   console.log('[OCR Offscreen] Received:', type, 'requestId:', requestId);
