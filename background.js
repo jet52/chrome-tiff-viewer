@@ -13,6 +13,11 @@
  * - webNavigation.onBeforeNavigate: Early detection of TIFF navigation
  */
 
+// Production mode - set to false to enable debug logging
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const logError = DEBUG ? console.error.bind(console) : () => {};
+
 // ==================== Configuration ====================
 
 /** Regex to match TIFF file extensions in URLs */
@@ -65,12 +70,12 @@ async function createRedirectRule(url) {
       removeRuleIds: []
     });
 
-    console.log(`[TIFF Viewer] Created redirect rule ${ruleId} for: ${url}`);
+    log(`[TIFF Viewer] Created redirect rule ${ruleId} for: ${url}`);
 
     // Clean up rule after 30 seconds (it should have been used by then)
     setTimeout(() => removeRedirectRule(url), 30000);
   } catch (err) {
-    console.error('[TIFF Viewer] Failed to create redirect rule:', err);
+    logError('[TIFF Viewer] Failed to create redirect rule:', err);
     pendingRules.delete(url);
   }
 }
@@ -88,9 +93,9 @@ async function removeRedirectRule(url) {
       removeRuleIds: [ruleId]
     });
     pendingRules.delete(url);
-    console.log(`[TIFF Viewer] Removed redirect rule ${ruleId}`);
+    log(`[TIFF Viewer] Removed redirect rule ${ruleId}`);
   } catch (err) {
-    console.error('[TIFF Viewer] Failed to remove redirect rule:', err);
+    logError('[TIFF Viewer] Failed to remove redirect rule:', err);
   }
 }
 
@@ -144,7 +149,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     mime === 'image/x-tiff';
 
   if (isTiff) {
-    console.log(`[TIFF Viewer] Intercepted download: ${url}`);
+    log(`[TIFF Viewer] Intercepted download: ${url}`);
 
     // Cancel the download
     chrome.downloads.cancel(downloadItem.id);
@@ -176,7 +181,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     // Skip if it's already our viewer
     if (changeInfo.url.includes(VIEWER_URL)) return;
 
-    console.log(`[TIFF Viewer] Tab navigating to TIFF: ${changeInfo.url}`);
+    log(`[TIFF Viewer] Tab navigating to TIFF: ${changeInfo.url}`);
     openInViewer(changeInfo.url, tabId);
   }
 });
@@ -186,7 +191,7 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (tab.pendingUrl && isTiffUrl(tab.pendingUrl)) {
     if (tab.pendingUrl.includes(VIEWER_URL)) return;
 
-    console.log(`[TIFF Viewer] New tab with TIFF: ${tab.pendingUrl}`);
+    log(`[TIFF Viewer] New tab with TIFF: ${tab.pendingUrl}`);
     createRedirectRule(tab.pendingUrl);
   }
 });
@@ -207,7 +212,7 @@ chrome.webNavigation?.onBeforeNavigate?.addListener((details) => {
   if (url.includes('viewer/viewer.html')) return;
 
   if (isTiffUrl(url)) {
-    console.log(`[TIFF Viewer] Navigation to TIFF: ${url}`);
+    log(`[TIFF Viewer] Navigation to TIFF: ${url}`);
 
     // Create a redirect rule immediately
     createRedirectRule(url);
@@ -229,10 +234,10 @@ chrome.runtime.onStartup.addListener(async () => {
         addRules: [],
         removeRuleIds: rules.map(r => r.id)
       });
-      console.log(`[TIFF Viewer] Cleaned up ${rules.length} old rules`);
+      log(`[TIFF Viewer] Cleaned up ${rules.length} old rules`);
     }
   } catch (err) {
-    console.error('[TIFF Viewer] Cleanup error:', err);
+    logError('[TIFF Viewer] Cleanup error:', err);
   }
 });
 
@@ -246,9 +251,9 @@ chrome.runtime.onInstalled.addListener(async () => {
         removeRuleIds: rules.map(r => r.id)
       });
     }
-    console.log('[TIFF Viewer] Extension installed/updated');
+    log('[TIFF Viewer] Extension installed/updated');
   } catch (err) {
-    console.error('[TIFF Viewer] Install cleanup error:', err);
+    logError('[TIFF Viewer] Install cleanup error:', err);
   }
 });
 
@@ -323,7 +328,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           requestId
         });
       } catch (err) {
-        console.error('[TIFF Viewer] OCR setup error:', err);
+        logError('[TIFF Viewer] OCR setup error:', err);
         const callback = pendingOcrRequests.get(requestId);
         if (callback) {
           callback({ success: false, error: err.message || String(err) });
@@ -340,7 +345,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const { requestId, ...response } = message;
     const callback = pendingOcrRequests.get(requestId);
     if (callback) {
-      console.log('[TIFF Viewer] OCR response received for request:', requestId);
+      log('[TIFF Viewer] OCR response received for request:', requestId);
       callback(response);
       pendingOcrRequests.delete(requestId);
     }
@@ -359,4 +364,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-console.log('[TIFF Viewer] Service worker loaded');
+log('[TIFF Viewer] Service worker loaded');

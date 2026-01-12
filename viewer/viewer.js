@@ -15,6 +15,11 @@
  * @requires Chrome Extension APIs - For OCR messaging
  */
 
+// Production mode - set to false to enable debug logging
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const logError = DEBUG ? console.error.bind(console) : () => {};
+
 class TiffViewer {
   constructor() {
     // ==================== State Properties ====================
@@ -406,7 +411,7 @@ class TiffViewer {
 
       await this.decodeTiff();
     } catch (err) {
-      console.error('Failed to load TIFF:', err);
+      logError('Failed to load TIFF:', err);
       this.showError('Failed to load TIFF file', err.message);
     }
   }
@@ -422,7 +427,7 @@ class TiffViewer {
       this.buffer = new Uint8Array(await file.arrayBuffer());
       await this.decodeTiff();
     } catch (err) {
-      console.error('Failed to load file:', err);
+      logError('Failed to load file:', err);
       this.showError('Failed to load TIFF file', err.message);
     }
   }
@@ -499,7 +504,7 @@ class TiffViewer {
 
       this.hideLoading();
     } catch (err) {
-      console.error('Failed to decode TIFF:', err);
+      logError('Failed to decode TIFF:', err);
       this.showError('Failed to decode TIFF file', err.message);
     }
   }
@@ -755,7 +760,7 @@ class TiffViewer {
    */
   save() {
     if (!this.buffer) {
-      console.log('[Save] No file loaded');
+      log('[Save] No file loaded');
       return;
     }
 
@@ -793,7 +798,7 @@ class TiffViewer {
     // Clean up
     setTimeout(() => URL.revokeObjectURL(url), 100);
 
-    console.log(`[Save] Downloaded: ${filename}`);
+    log(`[Save] Downloaded: ${filename}`);
   }
 
   // ==================== OCR Methods ====================
@@ -817,7 +822,7 @@ class TiffViewer {
     }
 
     this.updateOcrProgress('Initializing OCR engine...', 0);
-    console.log('[OCR] Requesting OCR initialization...');
+    log('[OCR] Requesting OCR initialization...');
 
     // Listen for progress updates from background
     if (!this.ocrProgressListener) {
@@ -837,10 +842,10 @@ class TiffViewer {
       }
 
       this.ocrInitialized = true;
-      console.log('[OCR] OCR initialized successfully');
+      log('[OCR] OCR initialized successfully');
     } catch (err) {
       const errMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown error');
-      console.error('[OCR] Failed to initialize:', errMsg);
+      logError('[OCR] Failed to initialize:', errMsg);
       throw new Error('Failed to initialize OCR: ' + errMsg);
     }
   }
@@ -920,7 +925,7 @@ class TiffViewer {
 
       this.hideOcrOverlay();
     } catch (err) {
-      console.error('[OCR] Error during OCR:', err);
+      logError('[OCR] Error during OCR:', err);
       this.hideOcrOverlay();
       const errorMsg = err && err.message ? err.message : (err ? err.toString() : 'Unknown error occurred');
       alert('OCR failed: ' + errorMsg);
@@ -949,7 +954,7 @@ class TiffViewer {
 
       this.hideOcrOverlay();
     } catch (err) {
-      console.error('[OCR] Error during OCR:', err);
+      logError('[OCR] Error during OCR:', err);
       this.hideOcrOverlay();
       const errorMsg = err && err.message ? err.message : (err ? err.toString() : 'Unknown error occurred');
       alert('OCR failed: ' + errorMsg);
@@ -962,12 +967,12 @@ class TiffViewer {
   async ocrPage(page, pageIndex) {
     if (page.ocrData) {
       // Already processed, skip
-      console.log(`[OCR] Page ${pageIndex + 1} already processed, skipping`);
+      log(`[OCR] Page ${pageIndex + 1} already processed, skipping`);
       return;
     }
 
     const canvas = page.canvas;
-    console.log(`[OCR] Starting recognition for page ${pageIndex + 1}, canvas size: ${canvas.width}x${canvas.height}`);
+    log(`[OCR] Starting recognition for page ${pageIndex + 1}, canvas size: ${canvas.width}x${canvas.height}`);
 
     try {
       // Convert canvas to data URL for sending to offscreen document
@@ -984,11 +989,11 @@ class TiffViewer {
       }
 
       if (this.ocrCancelled) {
-        console.log('[OCR] Cancelled');
+        log('[OCR] Cancelled');
         return;
       }
 
-      console.log('[OCR] Recognition result received');
+      log('[OCR] Recognition result received');
 
       // Store OCR data
       page.ocrData = response.data;
@@ -999,10 +1004,10 @@ class TiffViewer {
       // Mark page as processed
       page.element.classList.add('ocr-processed');
 
-      const textPreview = response.data.text ? response.data.text.substring(0, 100) : '(no text)';
-      console.log(`[OCR] Completed for page ${pageIndex + 1}: ${textPreview}...`);
+      // Note: Not logging OCR text content for security reasons
+      log(`[OCR] Completed for page ${pageIndex + 1}`);
     } catch (err) {
-      console.error(`[OCR] Failed to recognize page ${pageIndex + 1}:`, err);
+      logError(`[OCR] Failed to recognize page ${pageIndex + 1}:`, err);
       const errMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown error');
       throw new Error(`Failed to process page ${pageIndex + 1}: ${errMsg}`);
     }
@@ -1121,7 +1126,7 @@ class TiffViewer {
     if (this.ocrInitialized) {
       chrome.runtime.sendMessage({ type: 'ocr-terminate' }).catch(() => {});
       this.ocrInitialized = false;
-      console.log('[OCR] Worker terminated');
+      log('[OCR] Worker terminated');
     }
   }
 
