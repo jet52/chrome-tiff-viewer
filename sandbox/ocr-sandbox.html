@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>OCR Sandbox</title>
+</head>
+<body>
+  <div id="status">Loading...</div>
+
+  <script>
+    // Test basic JS first
+    console.log('[OCR Sandbox] Basic JS works');
+    document.getElementById('status').textContent = 'JS works, loading Tesseract...';
+
+    // Try to load Tesseract dynamically
+    const script = document.createElement('script');
+    script.src = '../lib/tesseract.min.js';
+    script.onload = () => {
+      console.log('[OCR Sandbox] Tesseract loaded successfully');
+      document.getElementById('status').textContent = 'Tesseract loaded!';
+      initOCR();
+    };
+    script.onerror = (err) => {
+      console.error('[OCR Sandbox] Failed to load Tesseract:', err);
+      document.getElementById('status').textContent = 'ERROR: Failed to load Tesseract';
+      // Try alternate path
+      tryAlternatePath();
+    };
+    document.head.appendChild(script);
+
+    function tryAlternatePath() {
+      console.log('[OCR Sandbox] Trying alternate path...');
+      const script2 = document.createElement('script');
+      // Try without the ../
+      script2.src = 'lib/tesseract.min.js';
+      script2.onload = () => {
+        console.log('[OCR Sandbox] Tesseract loaded via alternate path');
+        document.getElementById('status').textContent = 'Tesseract loaded (alt)!';
+        initOCR();
+      };
+      script2.onerror = () => {
+        document.getElementById('status').textContent = 'ERROR: All paths failed';
+        // Send error to parent
+        window.parent.postMessage({ type: 'ocr-sandbox-error', error: 'Failed to load Tesseract library' }, '*');
+      };
+      document.head.appendChild(script2);
+    }
+
+    function initOCR() {
+      // OCR Sandbox - runs Tesseract.js in a sandboxed environment
+      // Communicates with the main viewer via postMessage
+
+      let worker = null;
+
+      // Initialize Tesseract worker
+      async function initWorker() {
+        if (worker) return worker;
+
+        console.log('[OCR Sandbox] Initializing Tesseract worker...');
+        document.getElementById('status').textContent = 'Initializing OCR...';
+
+        try {
+          worker = await Tesseract.createWorker('eng', 1, {
+            logger: (m) => {
+              console.log('[OCR Sandbox] Logger:', m.status, m.progress);
+              document.getElementById('status').textContent = m.status + ' ' + Math.round(m.progress * 100) + '%';
+              // Send progress updates to parent
+              window.parent.postMessage({
+                type: 'ocr-progress',
+                status: m.status,
+                progress: m.progress
+              }, '*');
+            }
+          });
+
+          console.log('[OCR Sandbox] Worker initialized successfully');
+          document.getElementById('status').textContent = 'OCR Ready!';
+          return worker;
+        } catch (err) {
+          console.error('[OCR Sandbox] Failed to initialize worker:', err);
+          document.getElementById('status').textContent = 'ERROR: ' + err.message;
+          throw err;
+        }
+      }
+
+      // Perform OCR on image data
+      async function recognize(imageData) {
+        if (!worker) {
+          await initWorker();
+        }
+
+        console.log('[OCR Sandbox] Starting recognition...');
+        const result = await worker.recognize(imageData);
+        console.log('[OCR Sandbox] Recognition complete');
+        return result.data;
+      }
+
+      // Listen for messages from parent window
+      window.addEventListener('message', async (event) => {
+        console.log('[OCR Sandbox] Received message:', event.data);
+        const { type, id, imageData } = event.data || {};
+
+        if (type === 'ocr-init') {
+          try {
+            await initWorker();
+            window.parent.postMessage({ type: 'ocr-init-result', id, success: true }, '*');
+          } catch (err) {
+            const errorMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown init error');
+            console.error('[OCR Sandbox] Init error:', errorMsg);
+            window.parent.postMessage({
+              type: 'ocr-init-result',
+              id,
+              success: false,
+              error: errorMsg
+            }, '*');
+          }
+        }
+
+        if (type === 'ocr-recognize') {
+          try {
+            const data = await recognize(imageData);
+            window.parent.postMessage({ type: 'ocr-result', id, success: true, data }, '*');
+          } catch (err) {
+            const errorMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown recognize error');
+            console.error('[OCR Sandbox] Recognize error:', errorMsg);
+            window.parent.postMessage({
+              type: 'ocr-result',
+              id,
+              success: false,
+              error: errorMsg
+            }, '*');
+          }
+        }
+
+        if (type === 'ocr-terminate') {
+          if (worker) {
+            await worker.terminate();
+            worker = null;
+          }
+          window.parent.postMessage({ type: 'ocr-terminated', id }, '*');
+        }
+      });
+
+      // Signal that sandbox is ready
+      console.log('[OCR Sandbox] Sending ready signal');
+      window.parent.postMessage({ type: 'ocr-sandbox-ready' }, '*');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TIFF Viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <div class="toolbar-group">
+      <!-- Navigation controls -->
+      <button id="btn-prev" title="Previous page (Left Arrow)" disabled>
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+        </svg>
+      </button>
+      <span id="page-indicator">
+        <input type="number" id="page-input" min="1" value="1"> / <span id="page-total">1</span>
+      </span>
+      <button id="btn-next" title="Next page (Right Arrow)" disabled>
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <!-- Zoom controls -->
+      <button id="btn-zoom-out" title="Zoom out (-)">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
+        </svg>
+      </button>
+      <select id="zoom-select">
+        <option value="fit-width" selected>Fit Width</option>
+        <option value="fit-page">Fit Page</option>
+        <option value="0.25">25%</option>
+        <option value="0.5">50%</option>
+        <option value="0.75">75%</option>
+        <option value="1">100%</option>
+        <option value="1.25">125%</option>
+        <option value="1.5">150%</option>
+        <option value="2">200%</option>
+        <option value="3">300%</option>
+        <option value="4">400%</option>
+      </select>
+      <button id="btn-zoom-in" title="Zoom in (+)">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <!-- Rotation controls -->
+      <button id="btn-rotate-ccw" title="Rotate counterclockwise">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/>
+        </svg>
+      </button>
+      <button id="btn-rotate-cw" title="Rotate clockwise">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M15.55 5.55L11 1v3.07C7.06 4.56 4 7.92 4 12s3.05 7.44 7 7.93v-2.02c-2.84-.48-5-2.94-5-5.91s2.16-5.43 5-5.91V10l4.55-4.45zM19.93 11c-.17-1.39-.72-2.73-1.62-3.89l-1.42 1.42c.54.75.88 1.6 1.02 2.47h2.02zM13 17.9v2.02c1.39-.17 2.74-.71 3.9-1.61l-1.44-1.44c-.75.54-1.59.89-2.46 1.03zm3.89-2.42l1.42 1.41c.9-1.16 1.45-2.5 1.62-3.89h-2.02c-.14.87-.48 1.72-1.02 2.48z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <!-- View mode toggle -->
+      <button id="btn-view-mode" title="Toggle view mode (V)" data-mode="continuous">
+        <svg id="icon-continuous" viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M3 5v14h18V5H3zm16 12H5V7h14v10z"/>
+        </svg>
+        <svg id="icon-single" viewBox="0 0 24 24" width="20" height="20" style="display:none">
+          <path fill="currentColor" d="M4 4h7V2H4c-1.1 0-2 .9-2 2v7h2V4zm6 9l-4 5h3v4h2v-4h3l-4-5zm6-6l4-5h-3V2h-2v4h-3l4 5zm4 6h-2v7h-7v2h7c1.1 0 2-.9 2-2v-7z"/>
+        </svg>
+        <span id="view-mode-label">Continuous</span>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <!-- Print -->
+      <button id="btn-print" title="Print (Ctrl+P)">
+        <svg viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <div class="toolbar-group">
+      <!-- OCR -->
+      <div class="dropdown" id="ocr-dropdown">
+        <button id="btn-ocr" title="OCR - Extract text" class="dropdown-trigger">
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path fill="currentColor" d="M9.5 6.5v3h-3v-3h3M11 5H5v6h6V5zm-1.5 9.5v3h-3v-3h3M11 13H5v6h6v-6zm6.5-6.5v3h-3v-3h3M19 5h-6v6h6V5zm-6 8h1.5v1.5H13V13zm1.5 1.5H16V16h-1.5v-1.5zM16 13h1.5v1.5H16V13zm-3 3h1.5v1.5H13V16zm1.5 1.5H16V19h-1.5v-1.5zM16 16h1.5v1.5H16V16zm1.5-1.5H19V16h-1.5v-1.5zm0 3H19V19h-1.5v-1.5zM19 13h-1.5v1.5H19V13z"/>
+          </svg>
+          <span>OCR</span>
+          <svg class="dropdown-arrow" viewBox="0 0 24 24" width="12" height="12">
+            <path fill="currentColor" d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+        <div class="dropdown-menu">
+          <button id="btn-ocr-current" class="dropdown-item">Current Page</button>
+          <button id="btn-ocr-all" class="dropdown-item">All Pages</button>
+          <div class="dropdown-divider"></div>
+          <button id="btn-ocr-clear" class="dropdown-item">Clear OCR Text</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <div class="toolbar-group">
+      <!-- File info -->
+      <span id="file-info"></span>
+    </div>
+  </div>
+
+  <!-- Main content area -->
+  <div id="viewer-container">
+    <!-- Loading overlay -->
+    <div id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div id="loading-text">Loading TIFF...</div>
+      <div id="loading-progress"></div>
+    </div>
+
+    <!-- OCR progress overlay -->
+    <div id="ocr-overlay" style="display: none;">
+      <div class="ocr-progress-container">
+        <div class="loading-spinner"></div>
+        <div id="ocr-status">Initializing OCR...</div>
+        <div id="ocr-progress-bar">
+          <div id="ocr-progress-fill"></div>
+        </div>
+        <div id="ocr-progress-text">0%</div>
+        <button id="btn-ocr-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Error display -->
+    <div id="error-display" style="display: none;">
+      <div class="error-icon">
+        <svg viewBox="0 0 24 24" width="64" height="64">
+          <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+      </div>
+      <div id="error-message">Failed to load TIFF file</div>
+      <div id="error-details"></div>
+    </div>
+
+    <!-- Drop zone for local files -->
+    <div id="drop-zone" style="display: none;">
+      <div class="drop-zone-content">
+        <svg viewBox="0 0 24 24" width="64" height="64">
+          <path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+        </svg>
+        <p>Drop a TIFF file here to view</p>
+        <p class="drop-zone-hint">or <button id="btn-choose-file">choose a file</button></p>
+        <input type="file" id="file-input" accept=".tif,.tiff,image/tiff" style="display: none;">
+      </div>
+    </div>
+
+    <!-- Pages container -->
+    <div id="pages-container"></div>
+  </div>
+
+  <!-- Hidden iframe for printing -->
+  <iframe id="print-frame" style="display: none;"></iframe>
+
+  <script src="../lib/UTIF.js"></script>
+  <script src="../lib/tesseract.min.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
