@@ -81,6 +81,9 @@ class TiffViewer {
     // View mode toggle
     document.getElementById('btn-view-mode').addEventListener('click', () => this.toggleViewMode());
 
+    // Save
+    document.getElementById('btn-save').addEventListener('click', () => this.save());
+
     // Print
     document.getElementById('btn-print').addEventListener('click', () => this.print());
 
@@ -198,6 +201,12 @@ class TiffViewer {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           this.print();
+        }
+        break;
+      case 's':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          this.save();
         }
         break;
     }
@@ -359,6 +368,7 @@ class TiffViewer {
     try {
       document.title = file.name + ' - TIFF Viewer';
       this.elements.fileInfo.textContent = file.name;
+      this.currentFileName = file.name; // Store for save function
 
       this.buffer = new Uint8Array(await file.arrayBuffer());
       await this.decodeTiff();
@@ -675,154 +685,109 @@ class TiffViewer {
     }, 250);
   }
 
+  /**
+   * Save the original TIFF file
+   */
+  save() {
+    if (!this.buffer) {
+      console.log('[Save] No file loaded');
+      return;
+    }
+
+    // Get filename from URL or use default
+    let filename = 'image.tiff';
+    const urlParams = new URLSearchParams(window.location.search);
+    const fileUrl = urlParams.get('url');
+
+    if (fileUrl) {
+      try {
+        const url = new URL(fileUrl);
+        const pathParts = url.pathname.split('/');
+        const urlFilename = pathParts[pathParts.length - 1];
+        if (urlFilename && /\.tiff?$/i.test(urlFilename)) {
+          filename = decodeURIComponent(urlFilename);
+        }
+      } catch (e) {
+        // Use default filename
+      }
+    } else if (this.currentFileName) {
+      filename = this.currentFileName;
+    }
+
+    // Create blob and download
+    const blob = new Blob([this.buffer], { type: 'image/tiff' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Clean up
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+
+    console.log(`[Save] Downloaded: ${filename}`);
+  }
+
   // ==================== OCR Functions ====================
 
   /**
-   * Create and initialize the OCR sandbox iframe
-   */
-  async initOcrSandbox() {
-    if (this.ocrSandbox && this.ocrSandboxReady) {
-      return this.ocrSandbox;
-    }
-
-    console.log('[OCR] Creating sandbox iframe...');
-
-    return new Promise((resolve, reject) => {
-      // Create iframe for sandbox (visible for debugging)
-      const iframe = document.createElement('iframe');
-      const sandboxUrl = chrome.runtime.getURL('sandbox/ocr-sandbox.html');
-      console.log('[OCR] Sandbox URL:', sandboxUrl);
-      iframe.src = sandboxUrl;
-      iframe.id = 'ocr-sandbox-frame';
-      // Make it visible for debugging
-      iframe.style.position = 'fixed';
-      iframe.style.bottom = '0';
-      iframe.style.right = '0';
-      iframe.style.width = '300px';
-      iframe.style.height = '100px';
-      iframe.style.border = '2px solid red';
-      iframe.style.zIndex = '9999';
-      iframe.style.background = 'white';
-      document.body.appendChild(iframe);
-
-      this.ocrSandbox = iframe;
-      this.ocrMessageId = 0;
-      this.ocrPendingMessages = new Map();
-
-      // Listen for messages from sandbox
-      const messageHandler = (event) => {
-        console.log('[OCR] Received message:', event.data);
-        const { type, id, success, data, error, status, progress } = event.data || {};
-
-        if (type === 'ocr-sandbox-ready') {
-          console.log('[OCR] Sandbox is ready');
-          this.ocrSandboxReady = true;
-          // Hide iframe after confirmed working
-          iframe.style.display = 'none';
-          resolve(iframe);
-        }
-
-        if (type === 'ocr-progress') {
-          this.handleOcrProgress(status, progress);
-        }
-
-        if (type === 'ocr-init-result' || type === 'ocr-result' || type === 'ocr-terminated') {
-          const pending = this.ocrPendingMessages.get(id);
-          if (pending) {
-            this.ocrPendingMessages.delete(id);
-            if (success) {
-              pending.resolve(data);
-            } else {
-              pending.reject(new Error(error || 'Unknown OCR error'));
-            }
-          }
-        }
-
-        if (type === 'ocr-sandbox-error') {
-          console.error('[OCR] Sandbox error:', error);
-        }
-      };
-
-      window.addEventListener('message', messageHandler);
-      this.ocrMessageHandler = messageHandler;
-
-      // Also listen for iframe load event
-      iframe.onload = () => {
-        console.log('[OCR] Iframe loaded');
-      };
-
-      iframe.onerror = (err) => {
-        console.error('[OCR] Iframe error:', err);
-        reject(new Error('Failed to load OCR sandbox'));
-      };
-
-      // Timeout after 60 seconds
-      setTimeout(() => {
-        if (!this.ocrSandboxReady) {
-          console.error('[OCR] Sandbox timed out. Check if sandbox page loaded correctly.');
-          reject(new Error('OCR sandbox initialization timed out. Check console for errors.'));
-        }
-      }, 60000);
-    });
-  }
-
-  /**
-   * Handle OCR progress updates from sandbox
-   */
-  handleOcrProgress(status, progress) {
-    console.log('[OCR] Progress:', status, progress);
-    const percent = Math.round(progress * 100);
-
-    if (status === 'recognizing text') {
-      this.updateOcrProgress(`Recognizing text...`, percent);
-    } else if (status === 'loading language traineddata') {
-      this.updateOcrProgress(`Loading language data...`, percent);
-    } else if (status === 'initializing tesseract') {
-      this.updateOcrProgress(`Initializing Tesseract...`, 0);
-    } else if (status === 'loading tesseract core') {
-      this.updateOcrProgress(`Loading OCR engine...`, percent);
-    } else if (status === 'initialized tesseract') {
-      this.updateOcrProgress(`OCR engine ready`, 100);
-    }
-  }
-
-  /**
-   * Send message to OCR sandbox and wait for response
-   */
-  sendToSandbox(type, data = {}) {
-    return new Promise((resolve, reject) => {
-      const id = ++this.ocrMessageId;
-      this.ocrPendingMessages.set(id, { resolve, reject });
-
-      this.ocrSandbox.contentWindow.postMessage({
-        type,
-        id,
-        ...data
-      }, '*');
-
-      // Timeout after 60 seconds for OCR operations
-      setTimeout(() => {
-        if (this.ocrPendingMessages.has(id)) {
-          this.ocrPendingMessages.delete(id);
-          reject(new Error('OCR operation timed out'));
-        }
-      }, 60000);
-    });
-  }
-
-  /**
-   * Initialize OCR (via sandbox)
+   * Initialize OCR via offscreen document
    */
   async initOcr() {
+    if (this.ocrInitialized) {
+      return;
+    }
+
     this.updateOcrProgress('Initializing OCR engine...', 0);
+    console.log('[OCR] Requesting OCR initialization...');
+
+    // Listen for progress updates from background
+    if (!this.ocrProgressListener) {
+      this.ocrProgressListener = (message) => {
+        if (message.type === 'ocr-progress') {
+          this.handleOcrProgress(message.status, message.progress);
+        }
+      };
+      chrome.runtime.onMessage.addListener(this.ocrProgressListener);
+    }
 
     try {
-      await this.initOcrSandbox();
-      await this.sendToSandbox('ocr-init');
+      const response = await chrome.runtime.sendMessage({ type: 'ocr-init' });
+
+      if (!response.success) {
+        throw new Error(response.error || 'OCR initialization failed');
+      }
+
+      this.ocrInitialized = true;
       console.log('[OCR] OCR initialized successfully');
     } catch (err) {
-      console.error('[OCR] Failed to initialize OCR:', err);
-      throw err;
+      const errMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown error');
+      console.error('[OCR] Failed to initialize:', errMsg);
+      throw new Error('Failed to initialize OCR: ' + errMsg);
+    }
+  }
+
+  /**
+   * Handle OCR progress updates
+   */
+  handleOcrProgress(status, progress) {
+    const percent = Math.round((progress || 0) * 100);
+
+    if (status === 'recognizing text') {
+      this.updateOcrProgress('Recognizing text...', percent);
+    } else if (status === 'loading language traineddata') {
+      this.updateOcrProgress('Loading language data...', percent);
+    } else if (status === 'initializing tesseract') {
+      this.updateOcrProgress('Initializing Tesseract...', 0);
+    } else if (status === 'loading tesseract core') {
+      this.updateOcrProgress('Loading OCR engine...', percent);
+    } else if (status === 'initialized tesseract') {
+      this.updateOcrProgress('OCR engine ready', 100);
+    } else if (status === 'initialized api') {
+      this.updateOcrProgress('OCR ready', 100);
     }
   }
 
@@ -930,11 +895,18 @@ class TiffViewer {
     console.log(`[OCR] Starting recognition for page ${pageIndex + 1}, canvas size: ${canvas.width}x${canvas.height}`);
 
     try {
-      // Convert canvas to data URL for sending to sandbox
+      // Convert canvas to data URL for sending to offscreen document
       const imageData = canvas.toDataURL('image/png');
 
-      // Send to sandbox for OCR
-      const result = await this.sendToSandbox('ocr-recognize', { imageData });
+      // Send to background -> offscreen for OCR
+      const response = await chrome.runtime.sendMessage({
+        type: 'ocr-recognize',
+        imageData: imageData
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Recognition failed');
+      }
 
       if (this.ocrCancelled) {
         console.log('[OCR] Cancelled');
@@ -944,7 +916,7 @@ class TiffViewer {
       console.log('[OCR] Recognition result received');
 
       // Store OCR data
-      page.ocrData = result;
+      page.ocrData = response.data;
 
       // Create text overlay
       this.createTextOverlay(page);
@@ -952,11 +924,12 @@ class TiffViewer {
       // Mark page as processed
       page.element.classList.add('ocr-processed');
 
-      const textPreview = result.text ? result.text.substring(0, 100) : '(no text)';
+      const textPreview = response.data.text ? response.data.text.substring(0, 100) : '(no text)';
       console.log(`[OCR] Completed for page ${pageIndex + 1}: ${textPreview}...`);
     } catch (err) {
       console.error(`[OCR] Failed to recognize page ${pageIndex + 1}:`, err);
-      throw new Error(`Failed to process page ${pageIndex + 1}: ${err.message || err}`);
+      const errMsg = err && err.message ? err.message : (err ? String(err) : 'Unknown error');
+      throw new Error(`Failed to process page ${pageIndex + 1}: ${errMsg}`);
     }
   }
 
@@ -1059,6 +1032,7 @@ class TiffViewer {
    * Clear OCR data from all pages
    */
   clearOcr() {
+    // Clear OCR data from all pages
     for (const page of this.pages) {
       if (page.textOverlay) {
         page.textOverlay.remove();
@@ -1066,6 +1040,13 @@ class TiffViewer {
       }
       page.ocrData = null;
       page.element.classList.remove('ocr-processed');
+    }
+
+    // Terminate the worker in offscreen document
+    if (this.ocrInitialized) {
+      chrome.runtime.sendMessage({ type: 'ocr-terminate' }).catch(() => {});
+      this.ocrInitialized = false;
+      console.log('[OCR] Worker terminated');
     }
   }
 

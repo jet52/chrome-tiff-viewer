@@ -102,6 +102,12 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
   const filename = downloadItem.filename || '';
   const mime = downloadItem.mime || '';
 
+  // Don't intercept blob URLs (these are intentional saves from our viewer)
+  if (url.startsWith('blob:')) {
+    suggest({ filename: downloadItem.filename });
+    return;
+  }
+
   const isTiff =
     TIFF_EXTENSIONS.test(filename) ||
     TIFF_EXTENSIONS.test(url) ||
@@ -199,6 +205,65 @@ chrome.runtime.onInstalled.addListener(async () => {
     console.log('[TIFF Viewer] Extension installed/updated');
   } catch (err) {
     console.error('[TIFF Viewer] Install cleanup error:', err);
+  }
+});
+
+// ==================== OCR via Offscreen Document ====================
+
+let creatingOffscreen = null;
+
+async function setupOffscreen() {
+  // Check if offscreen document already exists
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [chrome.runtime.getURL('offscreen/offscreen.html')]
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  // Create offscreen document if not already creating
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+  } else {
+    creatingOffscreen = chrome.offscreen.createDocument({
+      url: 'offscreen/offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'Run Tesseract.js OCR worker for text recognition'
+    });
+    await creatingOffscreen;
+    creatingOffscreen = null;
+  }
+}
+
+// Handle messages from viewer for OCR operations
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'ocr-init' || message.type === 'ocr-recognize' || message.type === 'ocr-terminate') {
+    // Forward to offscreen document
+    (async () => {
+      try {
+        await setupOffscreen();
+        const response = await chrome.runtime.sendMessage(message);
+        sendResponse(response);
+      } catch (err) {
+        console.error('[TIFF Viewer] OCR error:', err);
+        sendResponse({ success: false, error: err.message || String(err) });
+      }
+    })();
+    return true; // Keep channel open for async response
+  }
+
+  // Forward progress messages to the viewer tab
+  if (message.type === 'ocr-progress' && sender.url?.includes('offscreen')) {
+    // Broadcast to all tabs showing viewer
+    chrome.tabs.query({}, (tabs) => {
+      for (const tab of tabs) {
+        if (tab.url?.includes('viewer/viewer.html')) {
+          chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+        }
+      }
+    });
   }
 });
 
