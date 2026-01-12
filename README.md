@@ -75,8 +75,6 @@ tiff-browser/
 │   ├── tesseract-worker.min.js    # Tesseract worker script
 │   ├── tesseract-core-simd.wasm.js # Tesseract WASM core
 │   └── eng.traineddata.gz  # English language data for OCR
-├── sandbox/
-│   └── ocr-sandbox.html    # Alternative sandbox approach (deprecated)
 └── icons/
     ├── icon16.png
     ├── icon48.png
