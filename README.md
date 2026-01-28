@@ -38,6 +38,46 @@ A Chrome extension that views multi-page TIFF files directly in the browser, sim
 - **Print support**: Print all pages with proper page breaks
 - **Save original**: Download the original TIFF file
 
+## Installation
+
+This extension is not yet available in the Chrome Web Store, so you'll need to install it manually as an "unpacked extension." Don't worry - it's easier than it sounds!
+
+### Step 1: Download the Extension
+
+1. Go to https://github.com/jet52/chrome-tiff-viewer
+2. Click the green **Code** button
+3. Select **Download ZIP**
+4. Once downloaded, extract/unzip the file to a location you'll remember (like your Documents or Downloads folder)
+
+### Step 2: Enable Developer Mode in Chrome
+
+1. Open Google Chrome
+2. Type `chrome://extensions/` in the address bar and press Enter
+3. Look for a toggle switch in the top-right corner labeled **Developer mode**
+4. Click the toggle to turn it ON (it should turn blue)
+
+> **What is Developer mode?** This is a Chrome feature that allows you to install extensions that aren't from the Chrome Web Store. It's completely safe - you're just telling Chrome to trust extensions you install manually.
+
+### Step 3: Load the Extension
+
+1. On the same extensions page, you'll see three new buttons appear. Click **Load unpacked**
+2. A file browser will open. Navigate to the folder where you extracted the extension
+3. Select the `chrome-tiff-viewer-master` folder (or whatever the extracted folder is named) and click **Select** or **Open**
+4. The TIFF Viewer extension should now appear in your list of extensions!
+
+### Step 4: Start Using It
+
+That's it! The extension is now installed and active. To use it:
+
+- Click on any TIFF file link on the web - it will automatically open in the viewer
+- Or drag and drop a local TIFF file into Chrome
+- Or when downloading a TIFF file, it will open in the viewer instead
+
+### Troubleshooting
+
+- **Extension disappeared after Chrome restart?** This can happen with unpacked extensions. Just go back to `chrome://extensions/` and make sure Developer mode is still enabled and the extension is toggled ON.
+- **Can't find the extracted folder?** Make sure you fully extracted/unzipped the downloaded file. You need the folder, not the .zip file itself.
+
 ## Keyboard Shortcuts
 
 | Key | Action |
