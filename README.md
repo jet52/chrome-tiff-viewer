@@ -2,6 +2,15 @@
 
 A Chrome extension that views multi-page TIFF files directly in the browser, similar to Chrome's built-in PDF viewer.
 
+## Not an Official Court Product
+
+An independent, open-source project published by an individual in a personal
+capacity, consistent with Rule 3.1 of the North Dakota Code of Judicial Conduct.
+It is a general-purpose TIFF viewer, not authorized, endorsed, or maintained by
+any court, and is unaffiliated with any court records system it may be used to
+view. OCR output is machine-generated and may be wrong — it is a reading aid,
+not a transcript.
+
 ## Features
 
 ### Core Viewing
