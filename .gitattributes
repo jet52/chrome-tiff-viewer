@@ -5,5 +5,3 @@
 build.sh export-ignore
 SECURITY.md export-ignore
 CLAUDE.md export-ignore
-# Unused Tesseract core build (extension loads tesseract-core-simd.wasm.js)
-lib/tesseract-core-simd-lstm.wasm.js export-ignore
