@@ -1,0 +1,9 @@
+# Files excluded from release zips built with `git archive` (see build.sh)
+.gitattributes export-ignore
+.gitignore export-ignore
+.github export-ignore
+build.sh export-ignore
+SECURITY.md export-ignore
+CLAUDE.md export-ignore
+# Unused Tesseract core build (extension loads tesseract-core-simd.wasm.js)
+lib/tesseract-core-simd-lstm.wasm.js export-ignore

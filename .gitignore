@@ -8,3 +8,9 @@ tmpclaude-*
 .DS_Store
 Thumbs.db
 .env
+
+# Claude project notes
+CLAUDE.md
+
+# Build output
+dist/

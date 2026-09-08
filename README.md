@@ -53,10 +53,9 @@ This extension is not yet available in the Chrome Web Store, so you'll need to i
 
 ### Step 1: Download the Extension
 
-1. Go to https://github.com/jet52/chrome-tiff-viewer
-2. Click the green **Code** button
-3. Select **Download ZIP**
-4. Once downloaded, extract/unzip the file to a location you'll remember (like your Documents or Downloads folder)
+1. Go to the releases page: https://github.com/jet52/chrome-tiff-viewer/releases/latest
+2. Under **Assets**, click the `tiff-viewer-<version>.zip` file to download it
+3. Once downloaded, extract/unzip the file to a location you'll remember (like your Documents or Downloads folder). You'll get a folder named `tiff-viewer-<version>`
 
 ### Step 2: Enable Developer Mode in Chrome
 
@@ -71,7 +70,7 @@ This extension is not yet available in the Chrome Web Store, so you'll need to i
 
 1. On the same extensions page, you'll see three new buttons appear. Click **Load unpacked**
 2. A file browser will open. Navigate to the folder where you extracted the extension
-3. Select the `chrome-tiff-viewer-master` folder (or whatever the extracted folder is named) and click **Select** or **Open**
+3. Select the `tiff-viewer-<version>` folder and click **Select** or **Open**
 4. The TIFF Viewer extension should now appear in your list of extensions!
 
 ### Step 4: Start Using It
@@ -176,6 +175,20 @@ Chrome extension restrictions prevent loading Web Workers from external URLs or 
 - Viewer logs: DevTools console on the viewer page
 - Offscreen logs: chrome://extensions/ → TIFF Viewer → "offscreen.html" in the views list
 
+### Building a Release
+`build.sh` packages the committed tree into `dist/tiff-viewer-<version>.zip`, with the version read from `manifest.json`. Files listed with `export-ignore` in `.gitattributes` are left out.
+
+```bash
+./build.sh            # package HEAD
+./build.sh v1.1.0     # package a tag
+```
+
+To publish a release:
+
+1. Bump `version` in `manifest.json` and add an entry under Version History
+2. Commit, then tag and push: `git tag v1.1.0 && git push origin master v1.1.0`
+3. The `Release` GitHub Actions workflow builds the zip and attaches it to a new GitHub release. It fails if the tag does not match the manifest version.
+
 ## Dependencies
 
 - **UTIF.js**: Pure JavaScript TIFF decoder (https://github.com/nickydev/UTIF.js)
@@ -192,6 +205,10 @@ Chrome extension restrictions prevent loading Web Workers from external URLs or 
 
 ## Version History
 
+- **1.1.0**: First packaged release; release zip built by `build.sh` and published via GitHub Actions
+- **1.0.32**: URL scheme validation (http, https, and file only)
+- **1.0.31**: Console logging disabled by default behind a DEBUG flag
+- **1.0.30**: Documentation and code comments
 - **1.0.29**: Fixed OCR messaging with request ID pattern, serializable results
 - **1.0.26**: Added offscreen document for OCR, save button
 - **1.0.0**: Initial release with viewing, zoom, rotation, print
